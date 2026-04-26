@@ -17,3 +17,4 @@ guide/
 tmp/
 .env
 Pipfile.lock.back
+token.json
