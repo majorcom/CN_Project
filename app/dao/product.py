@@ -6,11 +6,20 @@
 from sqlalchemy import desc
 
 from app.core.db import db
+from app.core.cache import cached
 from app.models.product import Product
 from app.models.m2m import Product2Image
 from app.libs.error_code import ProductException
 
 __author__ = 'Allen7D'
+
+
+def _hot_recent_ttl(count):
+    """Hot list (top N) lives longer; cold/large lists keep the default TTL."""
+    try:
+        return 3600 if int(count) <= 10 else 600
+    except (TypeError, ValueError):
+        return 600
 
 
 class ProductDao():
@@ -29,7 +38,10 @@ class ProductDao():
 
     # 获取最近上架的商品
     @staticmethod
+    @cached('product:recent', ttl=_hot_recent_ttl,
+            key_builder=lambda count: 'count={0}'.format(count))
     def get_most_recent(count):
+        # Hot top-10 lists are cached longer than larger/cold recent lists.
         products = Product.query.order_by(desc(Product.create_time)) \
             .limit(count).all()
         return {
@@ -38,12 +50,16 @@ class ProductDao():
 
     # 获取某商品详情
     @staticmethod
+    @cached('product:detail', ttl=None,
+            key_builder=lambda id: 'id={0}'.format(id))
     def get_product(id):
         product = Product.get_or_404(id=id)
         return product.hide('category_id')
 
     # 查询某类别商品列表
     @staticmethod
+    @cached('product:list', ttl=None,
+            key_builder=lambda c_id, page, size: 'cat={0}:page={1}:size={2}'.format(c_id, page, size))
     def get_list_by_category(c_id, page, size):
         '''
         :param c_id: 类别id

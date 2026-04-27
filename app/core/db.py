@@ -116,6 +116,20 @@ class AbortMixin(object):
             raise e if e else RepeatException(error_code=error_code, msg=msg)
 
 
+def _invalidate_cache(model_cls, instance=None):
+    '''Best-effort cache invalidation hook used from CRUDMixin.
+
+    Imported lazily to avoid a circular dependency between the ORM bootstrap
+    and the cache module, and tolerates the cache being disabled/down.
+    '''
+    try:
+        from app.core.cache import invalidate_for_model
+        invalidate_for_model(model_cls, instance)
+    except Exception:
+        # Never let cache bookkeeping break a write transaction.
+        pass
+
+
 class CRUDMixin(object):
     '''Mixin 添加CRUD操作: create, get(read), update, delete'''
 
@@ -142,14 +156,20 @@ class CRUDMixin(object):
         for attr, value in kwargs.items():
             if hasattr(instance, attr):
                 setattr(instance, attr, value)
-        return instance.save(commit)
+        result = instance.save(commit)
+        if commit:
+            _invalidate_cache(cls, result)
+        return result
 
     def update(self, commit: bool = True, **kwargs):
         '''更新'''
         for attr, value in kwargs.items():
             if hasattr(self, attr):
                 setattr(self, attr, value)
-        return self.save(commit)
+        result = self.save(commit)
+        if commit:
+            _invalidate_cache(type(self), self)
+        return result
 
     def save(self, commit: bool = True):
         '''保存'''
@@ -164,11 +184,16 @@ class CRUDMixin(object):
         self.save()
         if commit:
             db.session.commit()
+            _invalidate_cache(type(self), self)
 
     def hard_delete(self, commit: bool = True):
         '''硬删除'''
         db.session.delete(self)
-        return commit and db.session.commit()
+        if commit:
+            result = db.session.commit()
+            _invalidate_cache(type(self), self)
+            return result
+        return False
 
 
 class JSONSerializerMixin(object):
@@ -258,6 +283,7 @@ class BaseModel(CRUDMixin, AbortMixin, JSONSerializerMixin, db.Model):
         db.session.delete(self)
         if commit:
             db.session.commit()
+            _invalidate_cache(type(self), self)
 
     def _set_fields(self):
         self._exclude = []

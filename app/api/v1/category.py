@@ -7,7 +7,7 @@ from app.extensions.api_docs.redprint import Redprint
 from app.extensions.api_docs.v1 import category as api_doc
 from app.core.token_auth import auth
 from app.core.utils import paginate
-from app.models.category import Category
+from app.dao.category import CategoryDao
 from app.libs.error_code import Success
 
 __author__ = 'Allen7D'
@@ -18,30 +18,25 @@ api = Redprint(name='category', module='产品类别', api_doc=api_doc)
 @api.route('/all', methods=['GET'])
 @api.doc()
 def get_all_category():
-    '''查询所有「产品类别」'''
-    category_list = Category.query.all()
-    return Success(category_list)
+    '''查询所有「产品类别」 (кэшируется на 30м)'''
+    rv = CategoryDao.get_all()
+    return Success(rv['items'])
 
 
 @api.route('/list', methods=['GET'])
 @api.doc(args=['g.query.page', 'g.query.size'], auth=True)
 def get_category_list():
-    '''查询「产品类别」列表'''
+    '''查询「产品类别」列表 (кэшируется на 30м, сброс при изменении категории)'''
     page, size = paginate()
-
-    paginator = Category.query.filter_by().paginate(page=page, per_page=size, error_out=False)
-    return Success({
-        'total': paginator.total,
-        'current_page': paginator.page,
-        'items': paginator.items
-    })
+    rv = CategoryDao.get_list(page=page, size=size)
+    return Success(rv)
 
 
 @api.route('/<int:id>', methods=['GET'])
 @api.doc(args=['g.path.category_id'])
 def get_category(id):
-    '''查询类别'''
-    category = Category.get_or_404(id=id)
+    '''查询类别 (кэшируется на 30м)'''
+    category = CategoryDao.get_by_id(id=id)
     return Success(category)
 
 

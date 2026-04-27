@@ -37,3 +37,33 @@ SIZE_DEFAULT = 10
 
 # 登录类型(站内)
 CLINET_INNER_TYPES = (ClientTypeEnum.USERNAME, ClientTypeEnum.EMAIL, ClientTypeEnum.MOBILE)
+
+# Redis cache configuration
+CACHE_ENABLED = True
+CACHE_KEY_PREFIX = 'ms'
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
+REDIS_DB = 0
+REDIS_SOCKET_TIMEOUT = 0.5
+REDIS_SOCKET_CONNECT_TIMEOUT = 0.5
+
+# Cache TTLs (seconds). Used by @cached and explicit set() calls.
+CACHE_TTL = {
+    'product:list': 5 * 60,        # 5 minutes
+    'product:detail': 10 * 60,     # 10 minutes
+    'product:recent': 10 * 60,     # 10 minutes
+    'product:hot': 60 * 60,        # 1 hour for popular/hot items
+    'category:list': 30 * 60,      # 30 minutes
+    'category:detail': 30 * 60,
+    'banner:detail': 15 * 60,      # 15 minutes
+    'user:by_id': 60 * 60,         # 1 hour
+}
+
+# How long the single-flight rebuild lock lives (seconds).
+CACHE_STAMPEDE_LOCK_TTL = 10
+
+# Cache warming (preloaded on app start). Failures are logged and ignored.
+CACHE_WARMUP_ENABLED = True
+
+# Append CMS cache admin endpoints so Swagger picks them up.
+ALL_RP_API_LIST = ALL_RP_API_LIST + ['cms-cache']

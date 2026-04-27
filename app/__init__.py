@@ -13,6 +13,8 @@ from app.core.auth import load_endpint_infos, mount_route_meta_to_endpoint
 from app.core.redprint import RedprintAssigner
 from app.core.error import APIException, ServerError, RepeatException
 from app.core.logger import apply_request_log
+from app.core.cache import init_cache
+from app.core.cache_warmer import warm_up as warm_cache
 from app.extensions.api_docs.swagger import apply_swagger
 from app.extensions.default_view import apply_default_view
 from app.extensions.orm_admin import apply_orm_admin
@@ -64,6 +66,7 @@ def register_plugin(app):
     apply_json_encoder(app)  # JSON序列化
     apply_cors(app)  # 应用跨域扩展，使项目支持请求跨域
     connect_db(app)  # 连接数据库
+    apply_cache(app)  # 初始化 Redis 缓存层 (失败时降级为直接查库)
     handle_error(app)  # 统一处理异常
 
     # Debug模式(以下为非必选应用，且用户不可见)
@@ -72,6 +75,16 @@ def register_plugin(app):
     apply_swagger(app)  # 应用flassger, 可以查阅Swagger风格的 API文档
     if app.config['DEBUG']:
         apply_request_log(app)  # 打印请求日志
+
+
+def apply_cache(app):
+    init_cache(app)
+    if app.config.get('CACHE_WARMUP_ENABLED', True):
+        try:
+            warm_cache(app)
+        except Exception:
+            # Warming is purely best-effort; never block app startup on it.
+            app.logger.warning('cache warm-up raised, ignoring', exc_info=True)
 
 
 def apply_json_encoder(app):

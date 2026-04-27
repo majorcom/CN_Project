@@ -15,6 +15,9 @@ SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://root:159951@localhost:3306/zerd?chars
 SQLALCHEMY_ENCODING = 'utf-8'
 SQLALCHEMY_TRACK_MODIFICATIONS = False  # 屏蔽 sql alchemy 的 FSADeprecationWarning
 
+# Redis credentials (None when running locally without auth)
+REDIS_PASSWORD = None
+
 # 微信·小程序
 APP_ID = 'wx551ff8259cd7339b'
 APP_SECRET = '7773e41929841faf6aa9e68807f6e2cb'

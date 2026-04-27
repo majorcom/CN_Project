@@ -2,6 +2,7 @@
 """
   Created by Allen7D on 2020/4/16.
 """
+from app.core.cache import cached
 from app.core.db import db
 from app.libs.enums import ScopeEnum, ClientTypeEnum
 from app.models.user import User
@@ -12,6 +13,26 @@ __author__ = 'Allen7D'
 
 
 class UserDao():
+    @staticmethod
+    @cached('user:by_id', ttl=None,
+            key_builder=lambda uid: str(uid))
+    def get_for_auth(uid):
+        '''Return a primitive dict of the user fields needed for authentication
+        and request-time access (``g.user.*``). Cached for 1 hour and
+        invalidated on any User write via the CRUDMixin hook.
+        '''
+        user = User.get_or_404(id=uid)
+        return {
+            'id': user.id,
+            'nickname': user.nickname,
+            'group_id': user.group_id,
+            'auth': user.auth,
+            'is_admin': bool(user.is_admin),
+            'username': user.username,
+            'email': user.email,
+            'mobile': user.mobile,
+        }
+
     # 更改密码
     @staticmethod
     def change_password(uid, old_password, new_password):

@@ -55,6 +55,42 @@ Notes:
 - If `token.json` is missing, CMS/V1 auth tests can fail during collection.
 - Do not commit generated `token.json`.
 
+## Настройка Redis-кэша (Windows + Docker)
+
+Слой Redis-кэширования (`app/core/cache.py`) опционален при запуске
+(если Redis недоступен, приложение продолжает работать напрямую с БД),
+но нужен для запуска `tests/test_cache_integration.py`.
+
+1. Запустите контейнер Redis 7:
+   - `docker run -d --name mini-shop-redis -p 6379:6379 redis:7`
+2. Конфигурация по умолчанию берётся из `app/config/setting.py`:
+   - `REDIS_HOST=localhost`, `REDIS_PORT=6379`, `REDIS_DB=0` (интеграционные тесты используют `REDIS_DB=15`).
+3. Как отключить кэш без удаления Redis:
+   - установите `CACHE_ENABLED=False` в `app/config/setting.py` (или через env / `local_setting.py`).
+4. Запуск только кэш-тестов:
+   - `uv run pytest tests/test_cache_unit.py tests/test_cache_integration.py`
+5. Просмотр счётчиков из CMS:
+   - `GET /cms/cache/stats` (нужен admin token).
+6. Очистка namespace из CMS:
+   - `POST /cms/cache/flush?prefix=product` (нужен admin token).
+
+Примечания:
+- Unit-тесты используют `fakeredis`, поэтому им не нужен запущенный контейнер Redis.
+- Интеграционные тесты автоматически пропускаются, если Redis недоступен.
+- Не используйте `KEYS *` — инвалидация должна идти через `SCAN+UNLINK`.
+
+### Бенчмарк ускорения (≥50%)
+
+Для проверки критерия "API response time reduced by ≥50%" используйте
+`tools/bench_cache.py`:
+
+- `uv run python tools/bench_cache.py --target synthetic --fakeredis` — без БД/Redis.
+- `uv run python tools/bench_cache.py --target category:list` — реальный DAO.
+- `uv run python tools/bench_cache.py --target product:recent --count 10` — горячий путь.
+
+Скрипт печатает p50/p95 cold vs warm и завершается с кодом `0`, если
+ускорение по p50 ≥ 50% (удобно для CI/защиты).
+
 ## Workflow for Lab Tasks
 
 1. First, preserve baseline behavior: run existing tests before feature changes.

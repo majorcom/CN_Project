@@ -4,6 +4,7 @@
 """
 from collections import namedtuple
 from functools import wraps
+from types import SimpleNamespace
 
 from flask import current_app, g, request
 from flask_httpauth import HTTPBasicAuth as _HTTPBasicAuth
@@ -80,11 +81,26 @@ auth = HTTPBasicAuth()
 UserTuple = namedtuple('User', ['uid', 'ac_type', 'scope'])
 
 
+def _resolve_user(uid):
+    '''Return a lightweight user-like object using the cached UserDao.
+
+    On cache hit no DB query is issued. The returned ``SimpleNamespace``
+    exposes the same primitive attributes that downstream code accesses via
+    ``g.user.*`` (id, nickname, group_id, auth, is_admin, username, email,
+    mobile). If the cache layer is disabled or unavailable the DAO call
+    transparently falls back to ``User.get_or_404``.
+    '''
+    # Local import to avoid a circular dependency on app/__init__ during boot.
+    from app.dao.user import UserDao
+    data = UserDao.get_for_auth(uid)
+    return SimpleNamespace(**data)
+
+
 ##### 超级管理员的API校验 #####
 @auth.verify_admin
 def verify_admin(token, password):
     (uid, ac_type, scope) = decrypt_token(token)
-    current_user = User.get_or_404(id=uid)
+    current_user = _resolve_user(uid)
     if not current_user.is_admin:
         raise AuthFailed(msg='该接口为超级管理员权限操作')
     g.user = current_user  # UserTuple(uid, ac_type, scope)
@@ -94,7 +110,7 @@ def verify_admin(token, password):
 @auth.verify_group
 def verify_group(token, password):
     (uid, ac_type, scope) = decrypt_token(token)
-    current_user = User.get_or_404(id=uid)
+    current_user = _resolve_user(uid)
     group_id = current_user.group_id
     # 非admin用户，先进行校验
     print('group_id', group_id)
@@ -114,7 +130,7 @@ def verify_password(token, password):
     user_info = verify_auth_token(token)
     if not user_info:
         return False
-    g.user = User.get_or_404(id=user_info.uid)  # 用「g.user」来记录登录的状态；g只能用于一次请求
+    g.user = _resolve_user(user_info.uid)  # 用「g.user」来记录登录的状态；g只能用于一次请求
     return True
 
 

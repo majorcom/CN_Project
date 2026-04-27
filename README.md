@@ -50,8 +50,90 @@
 9. 错误码：前后端开发的错误码的约定
 10. 文件管理和上传：文件夹和文件的管理
 11. 文章管理
+12. Redis 多级缓存：热数据缓存、自动失效、命中率统计
 
+## ⚡ Кэширование (Redis)
 
+Слой кэширования на Redis (`app/core/cache.py`) работает перед MySQL для
+горячих read-path. Он **опционален**: если Redis недоступен, приложение
+продолжает обслуживать запросы напрямую через БД (graceful degradation).
+
+### Быстрый старт
+
+```bash
+docker run -d --name mini-shop-redis -p 6379:6379 redis:7
+uv run pytest tests/test_cache_unit.py tests/test_cache_integration.py
+```
+
+### Кэшируемые read-path и TTL
+
+| Read path                               | Префикс кэша      | TTL            | Когда инвалидируется                                      |
+| --------------------------------------- | ----------------- | -------------- | --------------------------------------------------------- |
+| `GET /v1/product/recent`                | `product:recent`  | 10м / 1ч (top 10) | при любом изменении `Product`                          |
+| `GET /v1/product/<id>`                  | `product:detail`  | 10м            | при любом изменении `Product`                             |
+| `GET /v1/product/list/by_category`      | `product:list`    | 5м             | при изменении `Product` или `Category`                    |
+| `GET /v1/category/all`, `list`, `<id>`  | `category:*`      | 30м            | при изменении `Category` (также очищается `product:list:*`) |
+| `GET /v1/banner/<id>`                   | `banner:detail`   | 15м            | при изменении `Banner` / `BannerItem`                     |
+| lookup пользователя в auth              | `user:by_id`      | 1ч             | при изменении соответствующей записи `User`               |
+
+Ключи имеют формат `ms:{entity}:{op}:{args}` (например, `ms:product:list:cat=3:page=1:size=10`).
+Групповая инвалидация выполняется через `SCAN + UNLINK` — использовать `KEYS *` нельзя.
+
+### Админ-эндпоинты (CMS)
+
+Все эндпоинты требуют admin token.
+
+| Метод | Endpoint                          | Назначение                                    |
+| ----- | --------------------------------- | --------------------------------------------- |
+| GET   | `/cms/cache/stats`                | счётчики hit/miss, количество ключей, память  |
+| POST  | `/cms/cache/flush?prefix=product` | очистка namespace (пустой prefix = весь кэш)  |
+| POST  | `/cms/cache/metrics/reset`        | сброс счётчиков hit/miss                      |
+
+### Конфигурация
+
+`app/config/setting.py`:
+
+```python
+CACHE_ENABLED = True
+CACHE_KEY_PREFIX = 'ms'
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
+REDIS_DB = 0
+REDIS_SOCKET_TIMEOUT = 0.5
+CACHE_TTL = { 'product:list': 300, 'product:detail': 600, ... }
+CACHE_WARMUP_ENABLED = True   # предзагрузка горячих данных при старте
+```
+
+Установите `CACHE_ENABLED = False`, чтобы отключить слой кэша без удаления кода.
+
+### Защита от stampede
+
+Декоратор `@cached(...)` использует single-flight lock в Redis
+(`SET NX EX`), чтобы под нагрузкой только один worker пересобирал «холодный»
+ключ; остальные временно читают из БД и получают уже обновлённый кэш на
+следующем запросе.
+
+### Замер ускорения (≥50%)
+
+Скрипт `tools/bench_cache.py` измеряет cold vs warm задержку DAO-методов и
+печатает p50/p95. Первые `--warmup` итераций сбрасывают кэш и попадают в
+MySQL, последующие `--iterations` бьют по уже прогретому Redis.
+
+```bash
+uv run python tools/bench_cache.py --target category:list --iterations 50
+uv run python tools/bench_cache.py --target product:recent --count 10
+uv run python tools/bench_cache.py --target synthetic --fakeredis --synthetic-ms 30
+```
+
+Пример выходных значений на локальной машине (Docker MySQL + Docker Redis):
+
+| Цель                                  | cold p50  | warm p50  | Ускорение |
+| ------------------------------------- | --------- | --------- | --------- |
+| `CategoryDao.get_all()`               | 8.76 ms   | 0.77 ms   | 91.2%     |
+| `ProductDao.get_most_recent(count=10)`| 11.16 ms  | 0.69 ms   | 93.8%     |
+| `synthetic` (30 ms искусств. задержка)| 30.78 ms  | 0.09 ms   | 99.7%     |
+
+Скрипт возвращает exit code `0`, если p50-ускорение ≥ 50% — удобно для CI.
 
 ## 目录
 - [亮点](#亮点)
