@@ -20,7 +20,7 @@ api = Redprint(name='product', module='产品', api_doc=api_doc)
 @api.route('/recent', methods=['GET'])
 @api.doc(args=['count'])
 def get_recent():
-    '''最新的商品'''
+    '''最新的商品 (кэшируется: count<=10 -> 1ч (hot), иначе 10м; сброс при изменении товара)'''
     count = CountValidator().validate_for_api().count.data
     rv = ProductDao.get_most_recent(count=count)
     return Success(rv)
@@ -41,7 +41,7 @@ def get_all_by_category():
 @api.doc(args=['g.query.page', 'g.query.size', 'g.query.category_id'], auth=True)
 @auth.login_required
 def get_list_by_category():
-    '''查询类别下商品列表'''
+    '''查询类别下商品列表 (кэшируется на 5м, сброс при изменении товара или категории)'''
     category_id = CategoryIDValidator().nt_data.category_id
     page, size = paginate()
     rv = ProductDao.get_list_by_category(c_id=category_id, page=page, size=size)
@@ -51,7 +51,7 @@ def get_list_by_category():
 @api.route('/<int:id>', methods=['GET'])
 @api.doc(args=['g.path.product_id'])
 def get_product(id):
-    '''查询商品'''
+    '''查询商品 (кэшируется на 10м, сброс при изменении товара)'''
     product = ProductDao.get_product(id=id)
     return Success(product)
 
