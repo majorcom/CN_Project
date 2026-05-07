@@ -1,0 +1,29 @@
+[
+  {
+    "target": "category:list",
+    "label": "CategoryDao.get_all()",
+    "cold_p50": 9.018299999979718,
+    "cold_p95": 10.362299999997049,
+    "warm_p50": 0.7741000000578424,
+    "warm_p95": 0.9006000000226777,
+    "speedup_p50": 91.41634232549833
+  },
+  {
+    "target": "product:recent",
+    "label": "ProductDao.get_most_recent(count=10)",
+    "cold_p50": 13.408700000013596,
+    "cold_p95": 13.495799999986957,
+    "warm_p50": 0.767400000086127,
+    "warm_p95": 0.9052000000338012,
+    "speedup_p50": 94.27685010414619
+  },
+  {
+    "target": "synthetic",
+    "label": "synthetic (30ms artificial DB delay)",
+    "cold_p50": 32.95980000007148,
+    "cold_p95": 33.15810000003694,
+    "warm_p50": 0.7318000000395841,
+    "warm_p95": 0.9966000000076747,
+    "speedup_p50": 97.77971953701783
+  }
+]
