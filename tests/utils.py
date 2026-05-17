@@ -2,12 +2,23 @@
 """
   Created by Allen7D on 2020/4/12.
 """
-import json
 import base64
+import json
+import socket
 
 from flask import request, g
 
 __author__ = 'Allen7D'
+
+
+def mysql_reachable(host='127.0.0.1', port=3306, timeout=0.5):
+    """True if TCP к MySQL открыт (интеграционные тесты без падения при импорте)."""
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+        sock.close()
+        return True
+    except OSError:
+        return False
 
 
 def write_token(data):

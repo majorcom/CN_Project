@@ -2,15 +2,23 @@
 """
   Created by Allen7D on 2020/4/12.
 """
-from app import create_app
+import pytest
+
+from tests.conftest import requires_mysql
 from tests.utils import write_token, get_token, format_print
 
 __author__ = 'Allen7D'
 
-app = create_app()
+pytestmark = requires_mysql
 
 
-def test_get_token():
+@pytest.fixture(scope='module')
+def app():
+    from app import create_app
+    return create_app()
+
+
+def test_get_token(app):
     with app.test_client() as client:
         rv = client.post('/v1/token', json={
             "account": "999@qq.com",
@@ -24,14 +32,10 @@ def test_get_token():
         assert rv.status_code == 200
 
 
-def test_decrypt_token():
+def test_decrypt_token(app):
     with app.test_client() as client:
         rv = client.post('/v1/token/verify', json={
             'token': get_token()
         })
         json_data = rv.get_json()
         format_print(json_data)
-
-
-test_get_token()
-test_decrypt_token()

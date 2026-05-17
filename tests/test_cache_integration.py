@@ -12,6 +12,10 @@ without a local Redis can still run the rest of the test suite.
 """
 from __future__ import annotations
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 redis = pytest.importorskip('redis')
@@ -58,12 +62,14 @@ def _flush_between_tests(app):
 
 
 def test_cache_info_summary_with_real_redis(app):
+    """Сводка cache_info_summary против живого redis-py: кэш включён, префикс совпадает с конфигом."""
     summary = cache_info_summary()
     assert summary['enabled'] is True
     assert summary['prefix'] == app.config.get('CACHE_KEY_PREFIX', 'ms')
 
 
 def test_decorator_round_trip_with_real_redis(app):
+    """@cached на живом Redis: два вызова с теми же args — одно выполнение функции; метрики hits/misses."""
     from app.core.cache import cached
 
     calls = {'n': 0}
@@ -82,7 +88,52 @@ def test_decorator_round_trip_with_real_redis(app):
     assert metrics['totals']['misses'] >= 1
 
 
-def test_flush_namespace_drops_keys(app):
+def test_parallel_stampede_same_key_real_redis(app):
+    """Живой Redis: несколько потоков синхронно бьют в один cold key — одно вычисление."""
+    from app.core.cache import cached
+
+    calls = {'n': 0}
+    n_threads = 12
+    barrier = threading.Barrier(n_threads)
+
+    @cached('integration:parallel', ttl=30, key_builder=lambda: 'cold')
+    def compute():
+        calls['n'] += 1
+        time.sleep(0.04)
+        return {'shard': 1}
+
+    def run():
+        barrier.wait()
+        return compute()
+
+    with ThreadPoolExecutor(max_workers=n_threads) as executor:
+        results = list(executor.map(lambda _: run(), range(n_threads)))
+
+    assert results == [{'shard': 1}] * n_threads
+    assert calls['n'] == 1
+
+
+def test_parallel_distinct_keys_real_redis(app):
+    """Живой Redis: параллельно несколько разных ключей — по одному compute на ключ."""
+    from app.core.cache import cached
+
+    seen = {}
+    lock = threading.Lock()
+
+    @cached('integration:multi', ttl=30, key_builder=lambda i: 'i={0}'.format(i))
+    def work(i):
+        time.sleep(0.015)
+        with lock:
+            seen[i] = seen.get(i, 0) + 1
+        return i * 3
+
+    keys = [2, 4, 6, 8]
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        first = list(executor.map(work, keys * 2))
+
+    assert first == [6, 12, 18, 24] * 2
+    assert all(seen[k] == 1 for k in keys)
+    """flush_namespace('product') удаляет ключи product:*, ключи banner:* сохраняются."""
     cache_service.set('product:detail:id=1', {'id': 1, 'name': 'A'}, ttl=60)
     cache_service.set('banner:detail:id=1', {'id': 1, 'title': 'b'}, ttl=60)
     deleted = cache_service.flush_namespace('product')
@@ -91,26 +142,28 @@ def test_flush_namespace_drops_keys(app):
     assert cache_service.get_json('banner:detail:id=1') == {'id': 1, 'title': 'b'}
 
 
-def test_cms_flush_endpoint_clears_prefix(app):
-    try:
-        from tests.utils import get_authorization
-        authorization = get_authorization()
-    except Exception as exc:
-        pytest.skip('CMS cache flush test needs token.json: {0}'.format(exc))
+def test_cms_flush_endpoint_clears_prefix(app, monkeypatch):
+    """POST /cms/cache/flush?prefix=product снимает только product-ключи.
+
+    Проверка маршрута и вызова flush_namespace; авторизация обходится —
+    иначе 401 при token.json без is_admin (см. verify_admin в token_auth).
+    """
+    from app.core.token_auth import auth
+
+    monkeypatch.setattr(auth, 'verify_admin_callback', lambda _username, _password: None)
 
     cache_service.set('product:detail:id=1', {'id': 1, 'name': 'A'}, ttl=60)
     cache_service.set('banner:detail:id=1', {'id': 1, 'title': 'b'}, ttl=60)
 
     with app.test_client() as client:
-        rv = client.post('/cms/cache/flush?prefix=product', headers={
-            'Authorization': authorization,
-        })
+        rv = client.post('/cms/cache/flush?prefix=product')
     assert rv.status_code == 200
     assert cache_service.get('product:detail:id=1') is None
     assert cache_service.get_json('banner:detail:id=1') == {'id': 1, 'title': 'b'}
 
 
 def test_full_namespace_flush(app):
+    """flush_namespace() без префикса — очистка всего namespace кэша приложения."""
     cache_service.set('foo:1', 'a', ttl=30)
     cache_service.set('bar:2', 'b', ttl=30)
     deleted = cache_service.flush_namespace()
@@ -120,7 +173,7 @@ def test_full_namespace_flush(app):
 
 
 def test_init_cache_disabled_when_config_off():
-    """If CACHE_ENABLED=False the service is configured but disabled — no errors."""
+    """CACHE_ENABLED=False после init_cache: операции кэша — безопасные no-op; затем восстановление для остальных тестов."""
     test_app = create_app()
     test_app.config.update(CACHE_ENABLED=False, CACHE_WARMUP_ENABLED=False)
     init_cache(test_app)

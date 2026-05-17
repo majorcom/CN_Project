@@ -2,15 +2,23 @@
 """
   Created by Allen7D on 2020/4/13.
 """
-from app import create_app
+import pytest
+
+from tests.conftest import requires_mysql
 from tests.utils import get_authorization
 
 __author__ = 'Allen7D'
 
-app = create_app()
+pytestmark = requires_mysql
 
 
-def test_create_auth_list():
+@pytest.fixture(scope='module')
+def app():
+    from app import create_app
+    return create_app()
+
+
+def test_create_auth_list(app):
     with app.test_client() as client:
         rv = client.post('/cms/auth/append', headers={
             'Authorization': get_authorization()
@@ -22,7 +30,7 @@ def test_create_auth_list():
         print(json_data)
 
 
-def test_delete_auth_list():
+def test_delete_auth_list(app):
     with app.test_client() as client:
         rv = client.post('/cms/auth/remove', headers={
             'Authorization': get_authorization()
@@ -32,7 +40,3 @@ def test_delete_auth_list():
         })
         json_data = rv.get_json()
         print(json_data)
-
-
-test_create_auth_list()
-test_delete_auth_list()

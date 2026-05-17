@@ -28,6 +28,9 @@ Run from repository root:
 - Start server (default): `uv run python server.py run`
 - Start server (custom host/port): `uv run python server.py run -h 0.0.0.0 -p 8080`
 - Run all tests: `uv run pytest`
+- Только быстрые тесты кэша (без MySQL/Redis): `uv run pytest tests/test_cache_unit.py tests/test_cache_warmer.py`
+- Покрытие кода: `uv run pytest tests/ --cov=app --cov-report=term-missing` (требует `pytest-cov` из dev-зависимостей)
+- Интеграционные тесты API и CMS **пропускаются**, если MySQL недоступен на `127.0.0.1:3306` (см. `tests/conftest.py`, `tests/utils.py`: `mysql_reachable`).
 - Run one test module: `uv run pytest tests/test_v1_product.py`
 - Run one test case: `uv run pytest tests/test_v1_product.py -k <pattern>`
 

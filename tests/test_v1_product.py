@@ -4,13 +4,16 @@
 """
 import unittest
 
+import pytest
+
 from app import db, create_app, connect_db
 from app.models.theme import Theme
-from app.models.product import Product as ProductModel
-from app.models.user import User as UserModel
+from tests.conftest import requires_mysql
 from tests.utils import format_print, get_authorization
 
 __author__ = 'Allen7D'
+
+pytestmark = requires_mysql
 
 
 class APITestCase(unittest.TestCase):

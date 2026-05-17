@@ -73,6 +73,7 @@ dev-dependencies = [
     "flask-admin==1.6.1",
     "fakeredis>=2.20.0",
     "matplotlib>=3.7.5",
+    "pytest-cov>=5.0.0",
 ]
 
 [tool.pytest.ini_options]
@@ -81,6 +82,20 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["app"]
+branch = false
+omit = []
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+fail_under = 0
+show_missing = true
 
 [tool.pylint.messages_control]
 disable = [
